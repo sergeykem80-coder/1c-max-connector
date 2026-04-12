@@ -1,0 +1,193 @@
+# Prometheus ServiceMonitor для автоматического обнаружения метрик
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: max-notification-service
+  labels:
+    app: max-notification-service
+spec:
+  selector:
+    matchLabels:
+      app: max-notification-service
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+---
+# Alerting rules для Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: max-notification-alerts
+  labels:
+    app: max-notification-service
+spec:
+  groups:
+  - name: max-notification.rules
+    rules:
+    # Оповещение о высоком уровне ошибок (более 5% за 5 минут)
+    - alert: HighErrorRate
+      expr: |
+        sum(rate(notification_requests_failed_total[5m])) 
+        / sum(rate(notification_requests_total[5m])) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Высокий уровень ошибок в сервисе уведомлений"
+        description: "Уровень ошибок составляет {{ $value | humanizePercentage }} за последние 5 минут"
+
+    # Оповещение об ошибках Max Bot API
+    - alert: MaxAPIErrors
+      expr: increase(max_api_errors_total[5m]) > 10
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Много ошибок Max Bot API"
+        description: "{{ $value }} ошибок Max Bot API за последние 5 минут"
+
+    # Оповещение об ошибках 1C клиентов
+    - alert: OneCErrors
+      expr: increase(1c_client_errors_total[5m]) > 20
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Много ошибок от 1C клиентов"
+        description: "{{ $value }} ошибок от 1C за последние 5 минут"
+
+    # Оповещение о высокой задержке
+    - alert: HighLatency
+      expr: histogram_quantile(0.95, sum(rate(notification_request_duration_seconds_bucket[5m])) by (le)) > 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокая задержка обработки запросов"
+        description: "95-й перцентиль задержки: {{ $value }} секунд"
+
+    # Оповещение о недоступности сервиса
+    - alert: ServiceDown
+      expr: up{job="max-notification-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Сервис уведомлений недоступен"
+        description: "Сервис не отвечает более 1 минуты"
+
+    # Оповещение о малом количестве подов
+    - alert: LowReplicaCount
+      expr: kube_deployment_status_replicas_available{deployment=\"max-notification-service\"} < 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Мало реплик сервиса"
+        description: "Доступно только {{ $value }} реплик вместо минимум 2"
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: max-notification-dashboard
+  labels:
+    grafana_dashboard: "true"
+data:
+  max-notification-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Max Notification Service",
+        "tags": ["notifications", "max-bot"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(notification_requests_total[5m])",
+                "legendFormat": "Total Requests"
+              },
+              {
+                "expr": "rate(notification_requests_failed_total[5m])",
+                "legendFormat": "Failed Requests"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Error Rate %",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(notification_requests_failed_total[5m])) / sum(rate(notification_requests_total[5m])) * 100",
+                "legendFormat": "Error Rate %"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Request Duration (p50, p95, p99)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(notification_request_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "p50"
+              },
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(notification_request_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "p95"
+              },
+              {
+                "expr": "histogram_quantile(0.99, sum(rate(notification_request_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "p99"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Max Bot API Errors",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(max_api_errors_total[5m])",
+                "legendFormat": "Max API Errors"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "1C Client Errors",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(1c_client_errors_total[5m])",
+                "legendFormat": "1C Errors"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "Active Requests",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "notification_active_requests",
+                "legendFormat": "Active"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
