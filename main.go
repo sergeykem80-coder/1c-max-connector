@@ -453,7 +453,7 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("User-Agent", "max-notification-service/"+cfg.ServiceVersion)
+	httpReq.Header.Set("User-Agent", "max-notification-service/1.0.0")
 
 	// Выполнение запроса
 	resp, err := s.client.Do(httpReq)
