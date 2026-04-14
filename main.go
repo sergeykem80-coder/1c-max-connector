@@ -221,7 +221,7 @@ func initTracer(cfg *Config) (func(), error) {
 	}
 
 	exporter, err := otlptracehttp.New(
-		otlptracehttp.WithEndpoint(cfg.OTLPEndpoint),
+		otlptracehttp.WithEndpointURL(cfg.OTLPEndpoint),
 		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {
@@ -428,7 +428,7 @@ func (s *Service) sendNotificationHandler(w http.ResponseWriter, r *http.Request
 
 func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (string, error) {
 	// Формирование запроса к Max Bot API
-	maxReq := map[string]interface{}{
+	_ = map[string]interface{}{
 		"text": req.Message,
 		"notify": true,
 	}
