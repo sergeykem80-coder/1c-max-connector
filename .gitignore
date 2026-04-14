@@ -1,4 +1,35 @@
 ```
-# Go-specific ignores
+# Dependencies
 go.sum
+vendor/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.out
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Temp files
+*.tmp
 ```
