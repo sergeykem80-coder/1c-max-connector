@@ -205,7 +205,7 @@ func initMetrics() *Metrics {
 			Help: "Total number of Max Bot API errors",
 		}),
 		oneCErrors: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "1c_client_errors_total",
+			Name: "onec_client_errors_total",
 			Help: "Total number of 1C client errors",
 		}),
 		activeRequests: promauto.NewGauge(prometheus.GaugeOpts{
