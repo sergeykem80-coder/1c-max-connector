@@ -1,3 +1,18 @@
-```go
+```
+# Dependencies
+vendor/
 
+# Build artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+*.out
+
+# Go-specific
+*.mod
+*.sum
+cover.out
 ```
