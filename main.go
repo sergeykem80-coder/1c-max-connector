@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -420,32 +421,33 @@ func (s *Service) sendNotificationHandler(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (string, error) {
-	// Формирование запроса к Max Bot API
-	_ = map[string]interface{}{
+	// Формирование тела запроса к Max Bot API
+	bodyData := map[string]interface{}{
 		"text": req.Message,
 		"notify": true,
 	}
 
-	// Добавление получателя
-	values := make(map[string]string)
+	// Добавление получателя в тело запроса
 	if req.UserID != 0 {
-		values["userId"] = strconv.FormatInt(req.UserID, 10)
+		bodyData["userId"] = strconv.FormatInt(req.UserID, 10)
 	} else if req.ChatID != 0 {
-		values["chatId"] = strconv.FormatInt(req.ChatID, 10)
+		bodyData["chatId"] = strconv.FormatInt(req.ChatID, 10)
 	} else if req.PhoneNumber != "" {
-		values["phoneNumbers"] = req.PhoneNumber
+		bodyData["phoneNumbers"] = req.PhoneNumber
 	}
 
-	// Построение URL
+	// Сериализация тела запроса в JSON
+	jsonBody, err := json.Marshal(bodyData)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Построение URL только с токеном и версией
 	url := fmt.Sprintf("%s/messages?access_token=%s&version=0.0.10", 
 		s.config.MaxBotBaseURL, s.config.MaxBotToken)
-	
-	for key, val := range values {
-		url += fmt.Sprintf("&%s=%s", key, val)
-	}
 
-	// Создание HTTP запроса
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	// Создание HTTP запроса с JSON телом
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
