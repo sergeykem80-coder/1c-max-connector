@@ -221,6 +221,7 @@ func initTracer(cfg *Config) (func(), error) {
 	}
 
 	exporter, err := otlptracehttp.New(
+		context.Background(),
 		otlptracehttp.WithEndpointURL(cfg.OTLPEndpoint),
 		otlptracehttp.WithInsecure(),
 	)
