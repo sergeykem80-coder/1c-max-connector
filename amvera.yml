@@ -4,7 +4,7 @@ meta:
     name: docker
 build:
   dockerfile: Dockerfile
-  skip: true
+  skip: false
 run:
   image: null
   command: null
@@ -12,3 +12,8 @@ run:
   persistenceMount: /data
   containerPort: "8080"
   servicePort: "8080"
+  healthCheck:
+    path: /health
+    interval: 10s
+    timeout: 5s
+    retries: 3
