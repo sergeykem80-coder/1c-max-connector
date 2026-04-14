@@ -118,28 +118,20 @@ func main() {
 		client:  client,
 	}
 
-	// Регистрация обработчиков
-	http.HandleFunc("/health", service.healthHandler)
-	http.HandleFunc("/ready", service.readyHandler)
-	http.HandleFunc("/api/v1/send", service.sendNotificationHandler)
-	http.Handle("/metrics", promhttp.Handler())
+	// Регистрация обработчиков на одном сервере
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", service.healthHandler)
+	mux.HandleFunc("/ready", service.readyHandler)
+	mux.HandleFunc("/api/v1/send", service.sendNotificationHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
-	// Запуск сервера метрик
-	go func() {
-		addr := ":" + cfg.MetricsPort
-		logger.Info("Starting metrics server", zap.String("address", addr))
-		if err := http.ListenAndServe(addr, nil); err != nil {
-			logger.Fatal("Metrics server failed", zap.Error(err))
-		}
-	}()
-
-	// Запуск основного сервера
+	// Запуск единого сервера
 	addr := ":" + cfg.ServerPort
 	logger.Info("Starting notification service",
 		zap.String("address", addr),
 		zap.String("version", cfg.ServiceVersion))
 
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	if err := http.ListenAndServe(addr, mux); err != nil {
 		logger.Fatal("Server failed", zap.Error(err))
 	}
 }
