@@ -1,5 +1,4 @@
 ```
-# Configuration and deployment
-.amvera.json
-AMVERA_DEPLOY.md
+# Go-specific ignores
+go.sum
 ```
