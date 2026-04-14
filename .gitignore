@@ -1,4 +1,5 @@
 ```
-# Build artifacts
-*.html
+# Configuration and deployment
+.amvera.json
+AMVERA_DEPLOY.md
 ```
