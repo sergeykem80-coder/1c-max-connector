@@ -1,3 +1,28 @@
-```go
+```
+# Dependencies
+go.mod
+go.sum
 
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Go-specific
+*.test
+*.prof
+cover.out
+coverage.html
+
+# Vendor directory (if used)
+vendor/
+
+# Environment specific
+.env
+.env.local
+.env.*
 ```
