@@ -498,9 +498,8 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 		return "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Построение URL только с токеном и версией
-	url := fmt.Sprintf("%s/messages?access_token=%s&version=0.0.10", 
-		s.config.MaxBotBaseURL, s.config.MaxBotToken)
+	// Построение URL только с версией (токен будет в заголовке)
+	url := fmt.Sprintf("%s/messages?version=0.0.10", s.config.MaxBotBaseURL)
 
 	// Создание HTTP запроса с JSON телом
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
@@ -510,6 +509,7 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "max-notification-service/1.0.0")
+	httpReq.Header.Set("Authorization", "Bearer "+s.config.MaxBotToken)
 
 	// Выполнение запроса
 	resp, err := s.client.Do(httpReq)
