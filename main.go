@@ -197,7 +197,7 @@ func loadConfig() *Config {
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
 		MetricsPort:    getEnv("METRICS_PORT", "9090"),
 		MaxBotToken:    getEnv("MAX_BOT_TOKEN", ""),
-		MaxBotBaseURL:  getEnv("MAX_BOT_BASE_URL", "https://botapi.max.ru"),
+		MaxBotBaseURL:  getEnv("MAX_BOT_BASE_URL", "https://platform-api.max.ru"),
 		OTLPEndpoint:   getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		ServiceVersion: getEnv("SERVICE_VERSION", "1.0.0"),
 		LogLevel:       getEnv("LOG_LEVEL", "info"),
