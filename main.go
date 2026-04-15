@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -480,16 +479,6 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 	// Формирование тела запроса к Max Bot API
 	bodyData := map[string]interface{}{
 		"text": req.Message,
-		"notify": true,
-	}
-
-	// Добавление получателя в тело запроса
-	if req.UserID != 0 {
-		bodyData["userId"] = strconv.FormatInt(req.UserID, 10)
-	} else if req.ChatID != 0 {
-		bodyData["chatId"] = strconv.FormatInt(req.ChatID, 10)
-	} else if req.PhoneNumber != "" {
-		bodyData["phoneNumbers"] = req.PhoneNumber
 	}
 
 	// Сериализация тела запроса в JSON
@@ -498,8 +487,17 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 		return "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Построение URL только с версией (токен будет в заголовке)
-	url := fmt.Sprintf("%s/messages?version=0.0.10", s.config.MaxBotBaseURL)
+	// Построение URL с user_id в query параметре
+	var url string
+	if req.UserID != 0 {
+		url = fmt.Sprintf("%s/messages?user_id=%d", s.config.MaxBotBaseURL, req.UserID)
+	} else if req.ChatID != 0 {
+		url = fmt.Sprintf("%s/messages?chat_id=%d", s.config.MaxBotBaseURL, req.ChatID)
+	} else if req.PhoneNumber != "" {
+		url = fmt.Sprintf("%s/messages?phone_number=%s", s.config.MaxBotBaseURL, req.PhoneNumber)
+	} else {
+		return "", fmt.Errorf("no recipient specified")
+	}
 
 	// Создание HTTP запроса с JSON телом
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
@@ -509,7 +507,7 @@ func (s *Service) sendToMaxBot(ctx context.Context, req NotificationRequest) (st
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "max-notification-service/1.0.0")
-	httpReq.Header.Set("Authorization", "Bearer "+s.config.MaxBotToken)
+	httpReq.Header.Set("Authorization", s.config.MaxBotToken)
 
 	// Выполнение запроса
 	resp, err := s.client.Do(httpReq)
