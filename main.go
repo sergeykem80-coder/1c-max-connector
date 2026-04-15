@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,6 +25,56 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.uber.org/zap"
 )
+
+// ChatStore хранилище информации о чатах
+type ChatStore struct {
+	mu     sync.RWMutex
+	chats  map[int64]*ChatInfo // key: chat_id
+}
+
+// ChatInfo информация о чате
+type ChatInfo struct {
+	ChatID    int64
+	Secret    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// NewChatStore создает новое хранилище чатов
+func NewChatStore() *ChatStore {
+	return &ChatStore{
+		chats: make(map[int64]*ChatInfo),
+	}
+}
+
+// Save сохраняет информацию о чате
+func (cs *ChatStore) Save(chatID int64, secret string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	
+	now := time.Now()
+	if existing, ok := cs.chats[chatID]; ok {
+		existing.Secret = secret
+		existing.UpdatedAt = now
+	} else {
+		cs.chats[chatID] = &ChatInfo{
+			ChatID:    chatID,
+			Secret:    secret,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	}
+}
+
+// Get получает информацию о чате
+func (cs *ChatStore) Get(chatID int64) (*ChatInfo, bool) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	info, ok := cs.chats[chatID]
+	return info, ok
+}
+
+var chatStore *ChatStore
 
 // Config хранит конфигурацию сервиса
 type Config struct {
@@ -112,6 +164,9 @@ func main() {
 		},
 	}
 
+	// Инициализация хранилища чатов
+	chatStore = NewChatStore()
+
 	service := &Service{
 		config:  cfg,
 		logger:  logger,
@@ -124,6 +179,7 @@ func main() {
 	mux.HandleFunc("/health", service.healthHandler)
 	mux.HandleFunc("/ready", service.readyHandler)
 	mux.HandleFunc("/api/v1/send", service.sendNotificationHandler)
+	mux.HandleFunc("/webhook/bot", service.webhookHandler) // Обработчик вебхука от бота
 	mux.Handle("/metrics", promhttp.Handler())
 
 	// Запуск единого сервера
@@ -510,6 +566,165 @@ func (s *Service) sendJSONResponse(w http.ResponseWriter, status int, response R
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
+}
+
+// WebhookEvent событие от вебхука бота
+type WebhookEvent struct {
+	UpdateID int64           `json:"update_id"`
+	Message  *BotMessage     `json:"message,omitempty"`
+	Callback *CallbackQuery  `json:"callback_query,omitempty"`
+}
+
+// BotMessage сообщение от бота
+type BotMessage struct {
+	MessageID int64  `json:"message_id"`
+	From      *User  `json:"from,omitempty"`
+	Chat      *Chat  `json:"chat"`
+	Date      int64  `json:"date"`
+	Text      string `json:"text,omitempty"`
+	StartParam string `json:"start_param,omitempty"` // параметр из deeplink
+}
+
+// User пользователь
+type User struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name,omitempty"`
+	Username  string `json:"username,omitempty"`
+}
+
+// Chat чат
+type Chat struct {
+	ID   int64  `json:"id"`
+	Type string `json:"type"`
+}
+
+// CallbackQuery callback запрос
+type CallbackQuery struct {
+	ID      string     `json:"id"`
+	From    *User      `json:"from"`
+	Message *BotMessage `json:"message,omitempty"`
+	Data    string     `json:"data"`
+}
+
+// webhookHandler обработчик вебхуков от бота
+func (s *Service) webhookHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.logger.Warn("Webhook: method not allowed", zap.String("method", r.Method))
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.logger.Error("Webhook: failed to read body", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var event WebhookEvent
+	if err := json.Unmarshal(body, &event); err != nil {
+		s.logger.Error("Webhook: invalid JSON", zap.Error(err), zap.ByteString("body", body))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Быстро отдаем OK
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+
+	// Обработка события в горутине
+	go s.processWebhookEvent(event)
+}
+
+// processWebhookEvent обрабатывает событие вебхука
+func (s *Service) processWebhookEvent(event WebhookEvent) {
+	ctx := context.Background()
+
+	// Обработка сообщения со стартом (deeplink)
+	if event.Message != nil && event.Message.Text == "/start" {
+		s.handleStartCommand(ctx, event.Message)
+		return
+	}
+
+	// Обработка callback query (если нужно)
+	if event.Callback != nil {
+		s.handleCallbackQuery(ctx, event.Callback)
+		return
+	}
+
+	s.logger.Debug("Webhook: unhandled event type")
+}
+
+// handleStartCommand обрабатывает команду /start с deeplink
+func (s *Service) handleStartCommand(ctx context.Context, msg *BotMessage) {
+	chatID := msg.Chat.ID
+	
+	// Извлекаем secret из start_param (deeplink параметр)
+	secret := ""
+	if msg.StartParam != "" {
+		secret = msg.StartParam
+	} else if len(msg.Text) > 6 { // "/start " + secret
+		parts := strings.SplitN(msg.Text, " ", 2)
+		if len(parts) == 2 {
+			secret = parts[1]
+		}
+	}
+
+	s.logger.Info("Webhook: /start command received",
+		zap.Int64("chat_id", chatID),
+		zap.String("secret", secret),
+		zap.String("username", msg.From.Username),
+	)
+
+	// Сохраняем secret и chat_id в хранилище
+	if secret != "" {
+		chatStore.Save(chatID, secret)
+		s.logger.Info("Webhook: chat info saved",
+			zap.Int64("chat_id", chatID),
+			zap.String("secret", secret),
+		)
+	}
+
+	// Отправляем приветственное сообщение
+	if err := s.sendWelcomeMessage(ctx, chatID); err != nil {
+		s.logger.Error("Webhook: failed to send welcome message",
+			zap.Int64("chat_id", chatID),
+			zap.Error(err),
+		)
+	}
+}
+
+// handleCallbackQuery обрабатывает callback запросы
+func (s *Service) handleCallbackQuery(ctx context.Context, callback *CallbackQuery) {
+	chatID := callback.Message.Chat.ID
+	
+	s.logger.Debug("Webhook: callback query received",
+		zap.Int64("chat_id", chatID),
+		zap.String("callback_data", callback.Data),
+	)
+
+	// Здесь можно добавить логику обработки callback
+}
+
+// sendWelcomeMessage отправляет приветственное сообщение
+func (s *Service) sendWelcomeMessage(ctx context.Context, chatID int64) error {
+	message := "Спасибо за подписку!"
+
+	req := NotificationRequest{
+		ChatID:  chatID,
+		Message: message,
+		Source:  "bot_welcome",
+	}
+
+	_, err := s.sendToMaxBot(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to send welcome message: %w", err)
+	}
+
+	s.logger.Info("Welcome message sent", zap.Int64("chat_id", chatID))
+	return nil
 }
 
 func generateRequestID() string {
