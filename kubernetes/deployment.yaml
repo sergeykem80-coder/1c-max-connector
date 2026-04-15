@@ -42,7 +42,7 @@ spec:
               name: max-bot-secret
               key: token
         - name: MAX_BOT_BASE_URL
-          value: "https://botapi.max.ru"
+          value: "https://platform-api.max.ru"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "jaeger-collector.observability:4318"
         - name: SERVICE_VERSION

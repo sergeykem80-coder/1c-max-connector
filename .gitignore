@@ -19,4 +19,33 @@ vendor/
 # Editors
 .vscode/
 .idea/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Build directories
+target/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
 ```
